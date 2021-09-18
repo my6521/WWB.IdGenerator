@@ -2,6 +2,13 @@
 
   <PropertyGroup>
     <TargetFramework>netcoreapp3.1</TargetFramework>
+	  <PackageId>WWB.IdGenerator</PackageId>
+	  <Version>1.0.0</Version>
+	  <Authors>my6521</Authors>
+	  <Description>NetCore3.1 Id生成器。</Description>
+	  <PackageLicenseExpression>MIT</PackageLicenseExpression>
+	  <RepositoryUrl>https://github.com/my6521/WWB.IdGenerator</RepositoryUrl>
+	  <GeneratePackageOnBuild>True</GeneratePackageOnBuild>
   </PropertyGroup>
 
 </Project>
