@@ -1,10 +1,8 @@
-﻿using System;
-
-namespace WWB.IdGenerator
+﻿namespace WWB.IdGenerator
 {
     internal interface ISnowWorker
     {
-        Action<OverCostActionArg> GenAction { get; set; }
+        //Action<OverCostActionArg> GenAction { get; set; }
 
         long NextId();
     }

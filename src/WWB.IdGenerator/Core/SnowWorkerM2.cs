@@ -1,5 +1,4 @@
-﻿
-using System;
+﻿using System;
 
 namespace WWB.IdGenerator
 {
@@ -10,7 +9,6 @@ namespace WWB.IdGenerator
     {
         public SnowWorkerM2(IdGeneratorOptions options) : base(options)
         {
-
         }
 
         public override long NextId()
@@ -43,6 +41,5 @@ namespace WWB.IdGenerator
                 return result;
             }
         }
-
     }
 }

@@ -1,11 +1,12 @@
 ﻿using System;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace WWB.IdGenerator
 {
     /// <summary>
     /// 雪花漂移算法
-    /// </summary> 
+    /// </summary>
     internal class SnowWorkerM1 : ISnowWorker
     {
         /// <summary>
@@ -41,26 +42,27 @@ namespace WWB.IdGenerator
         /// <summary>
         /// 最大漂移次数（含）
         /// </summary>
-        protected readonly int TopOverCostCount = 0;
+        protected int TopOverCostCount = 0;
 
-        protected readonly byte _TimestampShift = 0;
+        protected byte _TimestampShift = 0;
         protected static object _SyncLock = new object();
 
-        protected ushort _CurrentSeqNumber;
+        protected ushort _CurrentSeqNumber = 0;
         protected long _LastTimeTick = 0; // -1L
         protected long _TurnBackTimeTick = 0; // -1L;
         protected byte _TurnBackIndex = 0;
-
         protected bool _IsOverCost = false;
         protected int _OverCostCountInOneTerm = 0;
+
+#if DEBUG
         protected int _GenCountInOneTerm = 0;
         protected int _TermIndex = 0;
-
-        //private static long _StartTimeTick = 0;
-        //private static long _BaseTimeTick = 0;
+#endif
 
         public Action<OverCostActionArg> GenAction { get; set; }
 
+        //private static long _StartTimeTick = 0;
+        //private static long _BaseTimeTick = 0;
 
         public SnowWorkerM1(IdGeneratorOptions options)
         {
@@ -94,7 +96,7 @@ namespace WWB.IdGenerator
             }
 
             // 5.MaxSeqNumber
-            if (MaxSeqNumber == 0)
+            if (options.MaxSeqNumber <= 0)
             {
                 MaxSeqNumber = (1 << SeqBitLength) - 1;
             }
@@ -108,10 +110,10 @@ namespace WWB.IdGenerator
 
             // 7.Others
             TopOverCostCount = options.TopOverCostCount;
-            if (TopOverCostCount == 0)
-            {
-                TopOverCostCount = 2000;
-            }
+            //if (TopOverCostCount == 0)
+            //{
+            //    TopOverCostCount = 2000;
+            //}
 
             _TimestampShift = (byte)(WorkerIdBitLength + SeqBitLength);
             _CurrentSeqNumber = options.MinSeqNumber;
@@ -120,9 +122,11 @@ namespace WWB.IdGenerator
             //_StartTimeTick = (long)(DateTime.UtcNow.Subtract(BaseTime).TotalMilliseconds) - Environment.TickCount;
         }
 
+#if DEBUG
 
         private void DoGenIdAction(OverCostActionArg arg)
         {
+            //return;
             Task.Run(() =>
             {
                 GenAction(arg);
@@ -131,8 +135,6 @@ namespace WWB.IdGenerator
 
         private void BeginOverCostAction(in long useTimeTick)
         {
-            return;
-
             if (GenAction == null)
             {
                 return;
@@ -149,11 +151,10 @@ namespace WWB.IdGenerator
 
         private void EndOverCostAction(in long useTimeTick)
         {
-            if (_TermIndex > 10000)
-            {
-                _TermIndex = 0;
-            }
-            return;
+            //if (_TermIndex > 10000)
+            //{
+            //    _TermIndex = 0;
+            //}
 
             if (GenAction == null)
             {
@@ -171,8 +172,6 @@ namespace WWB.IdGenerator
 
         private void BeginTurnBackAction(in long useTimeTick)
         {
-            return;
-
             if (GenAction == null)
             {
                 return;
@@ -189,8 +188,6 @@ namespace WWB.IdGenerator
 
         private void EndTurnBackAction(in long useTimeTick)
         {
-            return;
-
             if (GenAction == null)
             {
                 return;
@@ -205,54 +202,62 @@ namespace WWB.IdGenerator
             _TurnBackIndex));
         }
 
-        private long NextOverCostId()
+#endif
+
+        protected virtual long NextOverCostId()
         {
             long currentTimeTick = GetCurrentTimeTick();
 
             if (currentTimeTick > _LastTimeTick)
             {
+#if DEBUG
                 EndOverCostAction(currentTimeTick);
-
+                _GenCountInOneTerm = 0;
+#endif
                 _LastTimeTick = currentTimeTick;
                 _CurrentSeqNumber = MinSeqNumber;
                 _IsOverCost = false;
                 _OverCostCountInOneTerm = 0;
-                _GenCountInOneTerm = 0;
 
                 return CalcId(_LastTimeTick);
             }
 
             if (_OverCostCountInOneTerm >= TopOverCostCount)
             {
+#if DEBUG
                 EndOverCostAction(currentTimeTick);
-
-                // TODO: 在漂移终止，等待时间对齐时，如果发生时间回拨较长，则此处可能等待较长时间。可优化为：在漂移终止时增加时间回拨应对逻辑。（该情况发生概率很低）
+                _GenCountInOneTerm = 0;
+#endif
+                // TODO: 在漂移终止，等待时间对齐时，如果发生时间回拨较长，则此处可能等待较长时间。可优化为：在漂移终止时增加时间回拨应对逻辑。（该情况发生概率低，暂不处理）
 
                 _LastTimeTick = GetNextTimeTick();
                 _CurrentSeqNumber = MinSeqNumber;
                 _IsOverCost = false;
                 _OverCostCountInOneTerm = 0;
-                _GenCountInOneTerm = 0;
 
                 return CalcId(_LastTimeTick);
             }
 
             if (_CurrentSeqNumber > MaxSeqNumber)
             {
+#if DEBUG
+                _GenCountInOneTerm++;
+#endif
                 _LastTimeTick++;
                 _CurrentSeqNumber = MinSeqNumber;
                 _IsOverCost = true;
                 _OverCostCountInOneTerm++;
-                _GenCountInOneTerm++;
 
                 return CalcId(_LastTimeTick);
             }
 
+#if DEBUG
             _GenCountInOneTerm++;
+#endif
             return CalcId(_LastTimeTick);
         }
 
-        private long NextNormalId()
+        protected virtual long NextNormalId()
         {
             long currentTimeTick = GetCurrentTimeTick();
 
@@ -261,8 +266,8 @@ namespace WWB.IdGenerator
                 if (_TurnBackTimeTick < 1)
                 {
                     _TurnBackTimeTick = _LastTimeTick - 1;
-                    _TurnBackIndex++;
 
+                    _TurnBackIndex++;
                     // 每毫秒序列数的前5位是预留位，0用于手工新值，1-4是时间回拨次序
                     // 支持4次回拨次序（避免回拨重叠导致ID重复），可无限次回拨（次序循环使用）。
                     if (_TurnBackIndex > 4)
@@ -270,7 +275,9 @@ namespace WWB.IdGenerator
                         _TurnBackIndex = 1;
                     }
 
+#if DEBUG
                     BeginTurnBackAction(_TurnBackTimeTick);
+#endif
                 }
 
                 //Thread.Sleep(1);
@@ -280,7 +287,9 @@ namespace WWB.IdGenerator
             // 时间追平时，_TurnBackTimeTick清零
             if (_TurnBackTimeTick > 0)
             {
+#if DEBUG
                 EndTurnBackAction(_TurnBackTimeTick);
+#endif
                 _TurnBackTimeTick = 0;
             }
 
@@ -294,14 +303,15 @@ namespace WWB.IdGenerator
 
             if (_CurrentSeqNumber > MaxSeqNumber)
             {
+#if DEBUG
                 BeginOverCostAction(currentTimeTick);
-
                 _TermIndex++;
+                _GenCountInOneTerm = 1;
+#endif
+                _OverCostCountInOneTerm = 1;
                 _LastTimeTick++;
                 _CurrentSeqNumber = MinSeqNumber;
                 _IsOverCost = true;
-                _OverCostCountInOneTerm = 1;
-                _GenCountInOneTerm = 1;
 
                 return CalcId(_LastTimeTick);
             }
@@ -309,7 +319,7 @@ namespace WWB.IdGenerator
             return CalcId(_LastTimeTick);
         }
 
-        private long CalcId(in long useTimeTick)
+        protected virtual long CalcId(long useTimeTick)
         {
             var result = ((useTimeTick << _TimestampShift) +
                 ((long)WorkerId << SeqBitLength) +
@@ -319,7 +329,7 @@ namespace WWB.IdGenerator
             return result;
         }
 
-        private long CalcTurnBackId(in long useTimeTick)
+        protected virtual long CalcTurnBackId(long useTimeTick)
         {
             var result = ((useTimeTick << _TimestampShift) +
                 ((long)WorkerId << SeqBitLength) + _TurnBackIndex);
@@ -341,12 +351,13 @@ namespace WWB.IdGenerator
 
             while (tempTimeTicker <= _LastTimeTick)
             {
+                //Thread.Sleep(1);
+                SpinWait.SpinUntil(() => false, 1);
                 tempTimeTicker = GetCurrentTimeTick();
             }
 
             return tempTimeTicker;
         }
-
 
         public virtual long NextId()
         {
